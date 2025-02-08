@@ -1,8 +1,183 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta http-equiv="refresh" content="0; url=https://www.linkedin.com/in/zach-vivier/">
+    <title>Zach's lookup</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+        }
+        input, button {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 5px;
+        }
+        button:hover {
+            background-color: #555;
+        }
+        #results {
+            margin-top: 20px;
+        }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: #555;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%; /* Position below the question mark */
+            left: 50%;
+            margin-left: -100px; /* Center the tooltip */
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #555 transparent transparent transparent;
+        }
+
+    </style>
 </head>
 <body>
+    <h1>Email DNS Records Lookup</h1>
+    <form id="lookupForm">
+        Domain: <input type="text" id="domain" name="domain" required>
+        <button type="submit">Lookup</button>
+        <span class="tooltip">
+            <span style="cursor:help;">?</span>
+            <span class="tooltiptext">You can also input selector:domain to lookup DKIM</span>
+        </span>
+    </form>
+    <div id="results"></div>
+
+    <script>
+        const form = document.getElementById('lookupForm');
+        const resultsDiv = document.getElementById('results');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const input = document.getElementById('domain').value.trim();
+            resultsDiv.innerHTML = "<p>Fetching records...</p>";
+
+            let domain = input;
+            let dkimSelector = null;
+
+            if (input.includes(':')) {
+                [dkimSelector, domain] = input.split(':');
+            }
+
+            try {
+                const recordTypes = ['MX', 'TXT'];
+                let resultsHtml = "";
+
+                for (let type of recordTypes) {
+                    const apiUrl = `https://cloudflare-dns.com/dns-query?name=${domain}&type=${type}`;
+                    const response = await fetch(apiUrl, {
+                        headers: { 'Accept': 'application/dns-json' }
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const data = await response.json();
+
+                    if (data.Answer && data.Answer.length > 0) {
+                        resultsHtml += `<h2>${type} Records for ${domain}:</h2><ul>`;
+                        data.Answer.forEach(record => {
+                            let recordData = record.data.replace(/"/g, '');
+
+                            if (type === 'MX') {
+                                const [priority, exchange] = recordData.split(" ");
+                                recordData = `${exchange} (Priority: ${priority})`;
+                            }
+
+                            if (type === 'TXT') {
+                                if (recordData.includes('v=spf1')) {
+                                    recordData = `SPF: ${recordData}`;
+                                }
+                            }
+
+                            resultsHtml += `<li>${recordData}</li>`;
+                        });
+                        resultsHtml += "</ul>";
+                    }
+                }
+
+                // Fetch DMARC record explicitly from _dmarc.domain
+                const dmarcApiUrl = `https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`;
+                const dmarcResponse = await fetch(dmarcApiUrl, {
+                    headers: { 'Accept': 'application/dns-json' }
+                });
+
+                if (dmarcResponse.ok) {
+                    const dmarcData = await dmarcResponse.json();
+                    if (dmarcData.Answer && dmarcData.Answer.length > 0) {
+                        resultsHtml += `<h2>DMARC Record for ${domain}:</h2><ul>`;
+                        dmarcData.Answer.forEach(record => {
+                            let recordData = record.data.replace(/"/g, '');
+                            resultsHtml += `<li>${recordData}</li>`;
+                        });
+                        resultsHtml += "</ul>";
+                    }
+                }
+
+                // Fetch DKIM record if selector is provided
+                if (dkimSelector) {
+                    let dkimDomains = [
+                        `${dkimSelector}._domainkey.${domain}`,
+                        `${dkimSelector}.dkim.${domain}.at.icloudmailadmin.com`
+                    ];
+
+                    for (let dkimDomain of dkimDomains) {
+                        const dkimApiUrl = `https://cloudflare-dns.com/dns-query?name=${dkimDomain}&type=TXT`;
+                        const dkimResponse = await fetch(dkimApiUrl, {
+                            headers: { 'Accept': 'application/dns-json' }
+                        });
+
+                        if (dkimResponse.ok) {
+                            const dkimData = await dkimResponse.json();
+                            if (dkimData.Answer && dkimData.Answer.length > 0) {
+                                resultsHtml += `<h2>DKIM Record for ${dkimDomain}:</h2><ul>`;
+                                dkimData.Answer.forEach(record => {
+                                    let recordData = record.data.replace(/"/g, '');
+                                    resultsHtml += `<li>${recordData}</li>`;
+                                });
+                                resultsHtml += "</ul>";
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!resultsHtml) {
+                    resultsHtml = `<p>No related DNS records found for ${domain}.</p>`;
+                }
+
+                resultsDiv.innerHTML = resultsHtml;
+            } catch (error) {
+                resultsDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+                console.error("Error fetching DNS records:", error);
+            }
+        });
+    </script>
 </body>
 </html>
