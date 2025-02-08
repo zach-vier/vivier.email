@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Zach's lookup</title>
+    <title>dns lookup</title>
     <style>
         body {
             font-family: sans-serif;
@@ -60,17 +60,20 @@
     </style>
 </head>
 <body>
-    <h1>Email DNS Records Lookup</h1>
+    <h1>​</h1>
     <form id="lookupForm">
         Domain: <input type="text" id="domain" name="domain" required>
         <button type="submit">Lookup</button>
         <span class="tooltip">
             <span style="cursor:help;">?</span>
-            <span class="tooltiptext">You can also input selector:domain to lookup DKIM</span>
+            <span class="tooltiptext">You can input a domain, or selector:domain to lookup DKIM</span>
         </span>
     </form>
     <div id="results"></div>
 
+
+<!-- Using Cloudflare API -->
+<!-- https://developers.cloudflare.com/api/python/resources/dns/ -->
     <script>
         const form = document.getElementById('lookupForm');
         const resultsDiv = document.getElementById('results');
@@ -88,7 +91,7 @@
             }
 
             try {
-                const recordTypes = ['MX', 'TXT'];
+                const recordTypes = ['MX', 'TXT', 'A', 'AAAA', 'CNAME', 'SRV']; //const recordTypes = ['MX', 'TXT']; // const recordTypes = ['MX', 'TXT', 'A', 'AAAA', 'CNAME', 'SRV'];
                 let resultsHtml = "";
 
                 for (let type of recordTypes) {
@@ -101,7 +104,7 @@
                     const data = await response.json();
 
                     if (data.Answer && data.Answer.length > 0) {
-                        resultsHtml += `<h2>${type} Records for ${domain}:</h2><ul>`;
+                        resultsHtml += `<h3>${type} Records for ${domain}:</h3><ul>`;
                         data.Answer.forEach(record => {
                             let recordData = record.data.replace(/"/g, '');
 
@@ -131,7 +134,7 @@
                 if (dmarcResponse.ok) {
                     const dmarcData = await dmarcResponse.json();
                     if (dmarcData.Answer && dmarcData.Answer.length > 0) {
-                        resultsHtml += `<h2>DMARC Record for ${domain}:</h2><ul>`;
+                        resultsHtml += `<h3>DMARC Record for ${domain}:</h3><ul>`;
                         dmarcData.Answer.forEach(record => {
                             let recordData = record.data.replace(/"/g, '');
                             resultsHtml += `<li>${recordData}</li>`;
