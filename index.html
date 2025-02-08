@@ -1,31 +1,48 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>dns lookup</title>
-     <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS Lookup</title>
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
     <style>
         body {
             font-family: sans-serif;
             background-color: #121212;
             color: #ffffff;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .container {
+            text-align: center;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.2);
         }
         input, button {
             background-color: #333;
             color: #fff;
             border: 1px solid #555;
-            padding: 5px;
+            padding: 10px;
+            border-radius: 5px;
         }
         button:hover {
             background-color: #555;
         }
         #results {
             margin-top: 20px;
+            text-align: left;
         }
         .tooltip {
             position: relative;
             display: inline-block;
+            cursor: help;
         }
-
         .tooltip .tooltiptext {
             visibility: hidden;
             width: 200px;
@@ -36,45 +53,46 @@
             padding: 5px;
             position: absolute;
             z-index: 1;
-            bottom: 125%; /* Position below the question mark */
+            bottom: 125%;
             left: 50%;
-            margin-left: -100px; /* Center the tooltip */
+            margin-left: -100px;
             opacity: 0;
             transition: opacity 0.5s;
         }
-
         .tooltip:hover .tooltiptext {
             visibility: visible;
             opacity: 1;
         }
-        .tooltip .tooltiptext::after {
-            content: "";
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            margin-left: -5px;
-            border-width: 5px;
-            border-style: solid;
-            border-color: #555 transparent transparent transparent;
+        .linkedin-logo {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            z-index: 1000;
         }
-
     </style>
 </head>
 <body>
-    <h1>​</h1>
-    <form id="lookupForm">
-        Domain: <input type="text" id="domain" name="domain" required>
-        <button type="submit">Lookup</button>
-        <span class="tooltip">
-            <span style="cursor:help;">?</span>
-            <span class="tooltiptext">You can input a domain, or selector:domain to lookup DKIM</span>
-        </span>
-    </form>
-    <div id="results"></div>
 
+    <!-- LinkedIn Icon -->
+    <a href="https://www.linkedin.com/in/zach-vivier/" target="_blank">
+        <img class="linkedin-logo" src="https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png" alt="LinkedIn">
+    </a>
 
-<!-- Using Cloudflare API -->
-<!-- https://developers.cloudflare.com/api/python/resources/dns/ -->
+    <div class="container">
+        <h1>DNS Lookup</h1>
+        <form id="lookupForm">
+            Domain: <input type="text" id="domain" name="domain" required>
+            <button type="submit">Lookup</button>
+            <span class="tooltip">
+                ?
+                <span class="tooltiptext">You can input a domain, or selector:domain to lookup DKIM</span>
+            </span>
+        </form>
+        <div id="results"></div>
+    </div>
+
     <script>
         const form = document.getElementById('lookupForm');
         const resultsDiv = document.getElementById('results');
@@ -92,14 +110,12 @@
             }
 
             try {
-                const recordTypes = ['MX', 'TXT', 'A', 'AAAA', 'CNAME', 'SRV']; //const recordTypes = ['MX', 'TXT']; // const recordTypes = ['MX', 'TXT', 'A', 'AAAA', 'CNAME', 'SRV'];
+                const recordTypes = ['MX', 'TXT', 'A', 'AAAA', 'CNAME', 'SRV'];
                 let resultsHtml = "";
 
                 for (let type of recordTypes) {
                     const apiUrl = `https://cloudflare-dns.com/dns-query?name=${domain}&type=${type}`;
-                    const response = await fetch(apiUrl, {
-                        headers: { 'Accept': 'application/dns-json' }
-                    });
+                    const response = await fetch(apiUrl, { headers: { 'Accept': 'application/dns-json' } });
 
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     const data = await response.json();
@@ -108,43 +124,33 @@
                         resultsHtml += `<h3>${type} Records for ${domain}:</h3><ul>`;
                         data.Answer.forEach(record => {
                             let recordData = record.data.replace(/"/g, '');
-
                             if (type === 'MX') {
                                 const [priority, exchange] = recordData.split(" ");
                                 recordData = `${exchange} (Priority: ${priority})`;
                             }
-
-                            if (type === 'TXT') {
-                                if (recordData.includes('v=spf1')) {
-                                    recordData = `SPF: ${recordData}`;
-                                }
+                            if (type === 'TXT' && recordData.includes('v=spf1')) {
+                                recordData = `SPF: ${recordData}`;
                             }
-
                             resultsHtml += `<li>${recordData}</li>`;
                         });
                         resultsHtml += "</ul>";
                     }
                 }
 
-                // Fetch DMARC record explicitly from _dmarc.domain
                 const dmarcApiUrl = `https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`;
-                const dmarcResponse = await fetch(dmarcApiUrl, {
-                    headers: { 'Accept': 'application/dns-json' }
-                });
+                const dmarcResponse = await fetch(dmarcApiUrl, { headers: { 'Accept': 'application/dns-json' } });
 
                 if (dmarcResponse.ok) {
                     const dmarcData = await dmarcResponse.json();
                     if (dmarcData.Answer && dmarcData.Answer.length > 0) {
                         resultsHtml += `<h3>DMARC Record for ${domain}:</h3><ul>`;
                         dmarcData.Answer.forEach(record => {
-                            let recordData = record.data.replace(/"/g, '');
-                            resultsHtml += `<li>${recordData}</li>`;
+                            resultsHtml += `<li>${record.data.replace(/"/g, '')}</li>`;
                         });
                         resultsHtml += "</ul>";
                     }
                 }
 
-                // Fetch DKIM record if selector is provided
                 if (dkimSelector) {
                     let dkimDomains = [
                         `${dkimSelector}._domainkey.${domain}`,
@@ -153,17 +159,14 @@
 
                     for (let dkimDomain of dkimDomains) {
                         const dkimApiUrl = `https://cloudflare-dns.com/dns-query?name=${dkimDomain}&type=TXT`;
-                        const dkimResponse = await fetch(dkimApiUrl, {
-                            headers: { 'Accept': 'application/dns-json' }
-                        });
+                        const dkimResponse = await fetch(dkimApiUrl, { headers: { 'Accept': 'application/dns-json' } });
 
                         if (dkimResponse.ok) {
                             const dkimData = await dkimResponse.json();
                             if (dkimData.Answer && dkimData.Answer.length > 0) {
                                 resultsHtml += `<h2>DKIM Record for ${dkimDomain}:</h2><ul>`;
                                 dkimData.Answer.forEach(record => {
-                                    let recordData = record.data.replace(/"/g, '');
-                                    resultsHtml += `<li>${recordData}</li>`;
+                                    resultsHtml += `<li>${record.data.replace(/"/g, '')}</li>`;
                                 });
                                 resultsHtml += "</ul>";
                                 break;
@@ -172,16 +175,13 @@
                     }
                 }
 
-                if (!resultsHtml) {
-                    resultsHtml = `<p>No related DNS records found for ${domain}.</p>`;
-                }
-
-                resultsDiv.innerHTML = resultsHtml;
+                resultsDiv.innerHTML = resultsHtml || `<p>No related DNS records found for ${domain}.</p>`;
             } catch (error) {
                 resultsDiv.innerHTML = `<p>Error: ${error.message}</p>`;
                 console.error("Error fetching DNS records:", error);
             }
         });
     </script>
+
 </body>
 </html>
